@@ -1,0 +1,76 @@
+name: 提取镜像文件
+
+on:
+  workflow_dispatch:
+    inputs:
+      img:
+        description: '需要解包的分区'
+        required: true
+        default: 'boot,vbmeta'
+      url:
+        description: '全量包链接'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+    - name: 安装必要软件包
+      run: |
+        sudo apt update
+        sudo apt install aria2 brotli git python3-pip zip unzip -y
+
+    - name: 下载全量包
+      run: |
+        aria2c -c -x 16 -s 16 -o rom.zip ${{ github.event.inputs.url }}
+
+    - name: 开始解包
+      run: |
+        if unzip -l rom.zip | grep -q "payload.bin"
+        then
+          pip3 install --no-cache git+https://github.com/5ec1cff/payload-dumper
+          payload_dumper --partitions ${{ github.event.inputs.img }} rom.zip
+        else
+          aria2c -c https://raw.githubusercontent.com/xpirt/sdat2img/refs/heads/master/sdat2img.py
+          img=${{ github.event.inputs.img }}
+          unzip -l rom.zip
+          for partitions in ${img//,/ }
+          do
+            if unzip -l rom.zip | grep -q "${partitions}.new.dat.br"
+            then
+              unzip -j rom.zip "$(unzip -l rom.zip | grep "${partitions}.new.dat.br" | awk '{print $4}')"
+              unzip -j rom.zip "$(unzip -l rom.zip | grep "${partitions}.transfer.list" | awk '{print $4}')"
+              brotli -d "${partitions}.new.dat.br"
+              python3 sdat2img.py "${partitions}.transfer.list" "${partitions}.new.dat" "output/${partitions}.img"
+              rm -f ${partitions}.*
+            elif unzip -l rom.zip | grep -q "${partitions}.new.dat"
+            then
+              unzip -j rom.zip "$(unzip -l rom.zip | grep "${partitions}.new.dat" | awk '{print $4}')"
+              unzip -j rom.zip "$(unzip -l rom.zip | grep "${partitions}.transfer.list" | awk '{print $4}')"
+              python3 sdat2img.py "${partitions}.transfer.list" "${partitions}.new.dat" "output/${partitions}.img"
+              rm -f ${partitions}.*
+            elif unzip -l rom.zip | grep -qE "${partitions}\.[a-zA-Z]{3}"
+            then
+              unzip -j rom.zip "$(unzip -l rom.zip | grep -E "${partitions}\.[a-zA-Z]{3}" | awk '{print $4}')" -d output
+            fi
+          done
+        fi
+        cd output && zip -m out.zip *
+
+    - name: 上传到Release
+      uses: softprops/action-gh-release@v2
+      with:
+          tag_name: ${{ github.run_id }}
+          files: |
+            output/out.zip
+
+    - name: 清理旧文件
+      uses: ophub/delete-releases-workflows@main
+      with:
+        workflows_keep_day: 0
+        releases_keep_latest: 3
+        delete_tags: true
+        delete_workflows: true
+        delete_releases: true
+        gh_token: ${{ secrets.GITHUB_TOKEN }}
