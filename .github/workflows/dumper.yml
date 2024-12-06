@@ -23,7 +23,7 @@ jobs:
 
     - name: 下载全量包
       run: |
-        aria2c -c -x 16 -s 16 -o rom.zip ${{ github.event.inputs.url }}
+        aria2c --check-certificate=false -c -x 16 -s 16 -o rom.zip ${{ github.event.inputs.url }}
 
     - name: 开始解包
       run: |
