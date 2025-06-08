@@ -10,6 +10,9 @@ on:
       url:
         description: '全量包链接'
         required: true
+      note:
+        description: '备注(可选)'
+        required: false
 
 jobs:
   build:
@@ -61,7 +64,7 @@ jobs:
     - name: 上传到Release
       uses: softprops/action-gh-release@v2
       with:
-          tag_name: ${{ github.run_id }}
+          tag_name: ${{ github.event.inputs.note || github.run_id }}
           files: |
             output/out.zip
 
